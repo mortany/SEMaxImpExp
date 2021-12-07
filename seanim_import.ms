@@ -89,7 +89,14 @@ caption:"Open .seanim animation file" \
 types:"SEAnim|*.seanim" \
 historyCategory:"SEMODELObjectPresets"
 
+
+if fname == undefined then exit
+
 f = fopen fname "rb"
+
+fnote_data_file = (getfilenamepath fname) + (getFilenameFile fname) + ".notetrack"
+
+w = fopen fnote_data_file "wb"
 
 struct frame_data
 (
@@ -101,7 +108,10 @@ struct bone_data
     BoneName,KeyFrames,BoneModif
 )
 
-clearlistener()
+struct note_frame
+(
+    keyframe ,note 
+)
 
 Magic = readFixedString f 6
 
@@ -121,15 +131,16 @@ if (Magic == "SEAnim") then
     SkipStream f 2
 
     local FrameRate = ReadFloat f
-    local NumFrames = ReadLong f
-    local NumBones = ReadLong f
-    local NumMods = ReadByte f
+    local NumFrames = ReadLong f #unsigned
+    local NumBones = ReadLong f #unsigned
+    local NumMods = ReadByte f #unsigned
 
     local DeltaTagName = ""
     local BoneArray = #()
 
     local AnimationBoneModifiers = #()
 
+    local numNotesTracks = #()
     
 
     fn GetBoneModif bone =
@@ -153,7 +164,7 @@ if (Magic == "SEAnim") then
     for i = 1 to NumBones do 
     (
         str = ReadSuperString f
-        bone = (bone_data BoneName:str KeyFrames:#() BoneModif:0 )
+        bone = (bone_data BoneName:str KeyFrames:#() BoneModif:-1)
         append BoneArray bone
     )
         --If we're delta, set delta name
@@ -161,8 +172,8 @@ if (Magic == "SEAnim") then
 
     for i = 1 to NumMods do 
     (
-        local bone_idx = if NumBones <= 0xFF then ReadByte f else ReadShort f
-        BoneArray[bone_idx +1].BoneModif = ReadByte f
+        local bone_idx = if NumBones <= 0xFF then ReadByte f #unsigned else ReadShort f #unsigned
+        BoneArray[bone_idx +1].BoneModif = ReadByte f #unsigned
     )
 
     for i = 1 to NumBones do
@@ -331,29 +342,50 @@ if (Magic == "SEAnim") then
         local KeyFrame = -1
         if (NumFrames <= 0xFF) then
         (
-            KeyFrame = (ReadByte f #unsigned) + 1
+            KeyFrame = (ReadByte f #unsigned)
         )
         else if (NumFrames <= 0xFFFF) then
         (
-            KeyFrame = (ReadShort f #unsigned) + 1
+            KeyFrame = (ReadShort f #unsigned)
         )
         else
         (
-            KeyFrame = (ReadLong f #unsigned) + 1
+            KeyFrame = (ReadLong f #unsigned)
         )
 
-        ReadSuperString f
+        str = ReadSuperString f
+
+        note = ( note_frame keyframe:KeyFrame note: str)
+
+        append numNotesTracks note
     )
 
-    --Print(BoneArray[1] as string)
-    --Print(BoneArray[1].KeyFrames.Count as string)
-    
-    -- for x = 1 to BoneArray[1].KeyFrames.Count do
-    -- (
-    --     Print(BoneArray[1].KeyFrames[x] as string)
-    -- )
+    WriteLong w NumNotes
 
+    for note in numNotesTracks do
+    (
+        WriteByte w note.keyframe #unsigned
+        WriteString w note.note
+    )
+
+    fclose w
+    
     local ctime, _pos, _rot, _scale
+    
+    del_array = #()
+
+    for xo in selection do
+    (
+        found = false 
+        for obk in BoneArray do
+        (
+            if (stricmp obk.BoneName xo.name) == 0 then (found = true ; exit)
+        )
+
+        if found == false then append del_array xo
+    )
+
+    deselect del_array
 
     for i = 1 to BoneArray.Count do
     (
@@ -362,9 +394,20 @@ if (Magic == "SEAnim") then
         for xo in selection do
             if (stricmp BoneArray[i].BoneName xo.name) == 0 then (current_bone = xo ; exit)
         
+        --if current_bone != undefined then select current_bone
+        
         local ANM_TYPE = GetBoneModif current_bone
         
-        print( ANM_TYPE as string)
+        if ANM_TYPE == -1 then ANM_TYPE = AnimType
+
+        if current_bone != undefined then
+        (
+            setUserProp current_bone "Bone Type" BoneArray[i].BoneModif
+            _mod = getUserProp current_bone "Bone Type"
+            --print("MOD IS "+_mod as string)
+            --print("MOD2 IS "+BoneArray[i].BoneModif as string)
+        )
+            --print(current_bone.name + "as type "+ ANM_TYPE as string)
 
         --ctr = for j = 1 to 3 collect linear_float ()
         _pos = linear_position ()
@@ -373,85 +416,60 @@ if (Magic == "SEAnim") then
         ctime = linear_float ()
 
 
-        --Print("DEBUG")
-
-
-        
-        for x = 1 to BoneArray[i].KeyFrames.Count do
+        if(current_bone != undefined) then
         (
-            if BoneArray[i].KeyFrames[x] != undefined then
-            (
-
-                local pos = if BoneArray[i].KeyFrames[x].translations != undefined then BoneArray[i].KeyFrames[x].translations else undefined
-                local rot = if BoneArray[i].KeyFrames[x].rotations != undefined then Quat BoneArray[i].KeyFrames[x].rotations.x BoneArray[i].KeyFrames[x].rotations.y BoneArray[i].KeyFrames[x].rotations.z BoneArray[i].KeyFrames[x].rotations.w else undefined
-                local scal = if BoneArray[i].KeyFrames[x].scales != undefined then BoneArray[i].KeyFrames[x].scales else undefined
-                --local rot = Quat 0 0 0 1
-                --local pos = Point3 0 0 0
-
-                if pos != undefined then animate on at time (x-1) _pos.value = pos
-                if rot != undefined then animate on at time (x-1) _rot.value = rot
-                if scal != undefined then animate on at time (x-1) _scale.value = scal
-
-                addNewKey ctime (x-1)
-
-                animate on at time (x-1) ctime.value = 1
-            )
+            --print(current_bone.name + " is type by hierarchy "+ ANM_TYPE as string)
         )
 
         if current_bone != undefined then
         (
-            setBeforeORT current_bone.rotation.controller #constant
-            setAfterORT current_bone.rotation.controller #constant
-            setBeforeORT current_bone.position.controller #constant
-            setAfterORT current_bone.position.controller #constant
-            setBeforeORT current_bone.scale.controller #constant
-            setAfterORT current_bone.scale.controller #constant
+            --setBeforeORT current_bone.rotation.controller #constant
+            --setAfterORT current_bone.rotation.controller #constant
+            --setBeforeORT current_bone.position.controller #constant
+            --setAfterORT current_bone.position.controller #constant
 
-            for k in ctime.keys do
+            current_bone.rotation.controller = linear_rotation ()
+            current_bone.position.controller = linear_position ()
+
+            for x = 1 to BoneArray[i].KeyFrames.Count do
             (
-                t = k.time
-
-                
-
-                if ANM_TYPE == 0 and current_bone.parent != undefined then
+                if BoneArray[i].KeyFrames[x] != undefined then
                 (
-                    if _pos.value != undefined then
+                    --print(BoneArray[i].BoneName + BoneArray[i].KeyFrames[x] as string)
+                    --#relative
+                    _pos = current_bone.position.controller
+                    _rot = current_bone.rotation.controller
+
+                    if BoneArray[i].KeyFrames[x].translations != undefined then
                     (
-                        --animate on at time t current_bone.transform.translation += _pos.value
-                        animate on at time t current_bone.position.controller.value = _pos.value
-                    )
+                        if BoneArray[i].BoneModif != 2 then
+                            animate on at time (x-1) setControllerValue _pos BoneArray[i].KeyFrames[x].translations true #absolute
+                        else if BoneArray[i].BoneModif == 2 then
+                            animate on at time (x-1) setControllerValue _pos BoneArray[i].KeyFrames[x].translations true #absolute 
                         
-                    --
-                )
-                else
-                (
-
-                    if _pos.value != undefined then
+                        CommitControllerValue _pos
+                    )
+                    
+                    if BoneArray[i].KeyFrames[x].rotations != undefined then
                     (
-                        animate on at time t current_bone.transform.translation = _pos.value
-                        --animate on at time t current_bone.position.controller.value = _pos.value
-                        --animate on at time t current_bone.position.controller.value += _pos.value
+                        rot_q = Quat BoneArray[i].KeyFrames[x].rotations.x BoneArray[i].KeyFrames[x].rotations.y BoneArray[i].KeyFrames[x].rotations.z BoneArray[i].KeyFrames[x].rotations.w
+                        if ANM_TYPE == 0 then
+                            animate on at time (x-1) setControllerValue _rot rot_q true #absolute
+                        else
+                            animate on at time (x-1) setControllerValue _rot rot_q true #absolute
+
+                        CommitControllerValue _rot
+
                     )
-                        
                 )
-                
-                if _rot.value != undefined then
-                    animate on at time t current_bone.rotation.controller.value = _rot.value
-
-                --pb = undefined --current_bone.parent
-                --tm = if pb == undefined then matrix3 1 else at time t pb.transform
-                --animate on at time t current_bone.transform *= tm
-
-                --animate on at time t current_bone.scale.controller.value = _scale.value
-
-                --addEaseCurve current_bone.rotation.controller.value _rot.value
-                --addEaseCurve current_bone.position.controller.value _pos.value
             )
-
             deletekeys current_bone.scale.controller.keys #allkeys
-
         )
     )
+
+    Print(NumFrames as string)
+
+    animationRange = interval 0f (NumFrames-1)
 )
 else
 (
