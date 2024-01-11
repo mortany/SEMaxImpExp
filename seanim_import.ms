@@ -386,6 +386,8 @@ if (Magic == "SEAnim") then
     )
 
     deselect del_array
+    sliderTime = 0
+    animationRange = interval 0 (NumFrames-1)
 
     for i = 1 to BoneArray.Count do
     (
@@ -423,53 +425,43 @@ if (Magic == "SEAnim") then
 
         if current_bone != undefined then
         (
-            --setBeforeORT current_bone.rotation.controller #constant
-            --setAfterORT current_bone.rotation.controller #constant
-            --setBeforeORT current_bone.position.controller #constant
-            --setAfterORT current_bone.position.controller #constant
+            setBeforeORT current_bone.rotation.controller #constant
+            setAfterORT current_bone.rotation.controller #constant
+            setBeforeORT current_bone.position.controller #constant
+            setAfterORT current_bone.position.controller #constant
 
-            current_bone.rotation.controller = linear_rotation ()
-            current_bone.position.controller = linear_position ()
+            --current_bone.rotation.controller = linear_rotation ()
+            --current_bone.position.controller = linear_position ()
 
             for x = 1 to BoneArray[i].KeyFrames.Count do
             (
                 if BoneArray[i].KeyFrames[x] != undefined then
                 (
-                    --print(BoneArray[i].BoneName + BoneArray[i].KeyFrames[x] as string)
+                    local current_frame = BoneArray[i].KeyFrames[x]
                     --#relative
-                    _pos = current_bone.position.controller
-                    _rot = current_bone.rotation.controller
+                    --_pos = current_bone.position.controller
+                    --_rot = current_bone.rotation.controller
 
                     if BoneArray[i].KeyFrames[x].translations != undefined then
                     (
-                        if BoneArray[i].BoneModif != 2 then
-                            animate on at time (x-1) setControllerValue _pos BoneArray[i].KeyFrames[x].translations true #absolute
-                        else if BoneArray[i].BoneModif == 2 then
-                            animate on at time (x-1) setControllerValue _pos BoneArray[i].KeyFrames[x].translations true #absolute 
-                        
-                        CommitControllerValue _pos
+                        --print(BoneArray[i].BoneName +" at frame "+ (x-1) as string + "    " + current_frame.translations as string)
+                        addNewKey current_bone.position.controller (x-1)
+                        animate on at time (x-1) current_bone.position.controller.value = current_frame.translations
+                        --CommitControllerValue _pos
                     )
                     
                     if BoneArray[i].KeyFrames[x].rotations != undefined then
                     (
-                        rot_q = Quat BoneArray[i].KeyFrames[x].rotations.x BoneArray[i].KeyFrames[x].rotations.y BoneArray[i].KeyFrames[x].rotations.z BoneArray[i].KeyFrames[x].rotations.w
-                        if ANM_TYPE == 0 then
-                            animate on at time (x-1) setControllerValue _rot rot_q true #absolute
-                        else
-                            animate on at time (x-1) setControllerValue _rot rot_q true #absolute
-
-                        CommitControllerValue _rot
-
+                        addNewKey current_bone.rotation.controller (x-1)
+                        rot_q = Quat current_frame.rotations.x current_frame.rotations.y current_frame.rotations.z current_frame.rotations.w
+                        animate on at time (x-1) current_bone.rotation.controller.value = rot_q
+                        --CommitControllerValue _rot
                     )
                 )
             )
             deletekeys current_bone.scale.controller.keys #allkeys
         )
     )
-
-    Print(NumFrames as string)
-
-    animationRange = interval 0f (NumFrames-1)
 )
 else
 (
